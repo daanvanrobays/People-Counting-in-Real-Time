@@ -2,6 +2,7 @@ from tracker.centroidtracker import CentroidTracker
 from tracker.trackableobject import TrackableObject
 from imutils.video import VideoStream
 from itertools import zip_longest
+from utils.api import Api
 from utils.mailer import Mailer
 from imutils.video import FPS
 from utils import thread
@@ -49,12 +50,12 @@ def parse_arguments():
 
 
 def send_mail():
-    # function to send the email alerts
+    """ function to send the email alerts """
     Mailer().send(config["Email_Receive"])
 
 
 def log_data(move_in, in_time, move_out, out_time):
-    # function to log the counting data
+    """ function to log the counting data """
     data = [move_in, in_time, move_out, out_time]
     # transpose the data to align the columns properly
     export_data = zip_longest(*data, fillvalue='')
@@ -66,8 +67,13 @@ def log_data(move_in, in_time, move_out, out_time):
             wr.writerows(export_data)
 
 
+def post_api(move_in, in_time, move_out, out_time):
+    """ function to post an API call """
+    Api().post(move_in, in_time, move_out, out_time)
+
+
 def people_counter():
-    # main function for people_counter.py
+    """ main function for people_counter.py """
     args = parse_arguments()
     # initialize the list of class labels MobileNet SSD was trained to detect
     CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat",
@@ -75,13 +81,16 @@ def people_counter():
                "dog", "horse", "motorbike", "person", "pottedplant", "sheep",
                "sofa", "train", "tvmonitor"]
 
+    # instantiate api_time as None, only initialize if API config is set to true
+    api_time = None
+
     # load our serialized model from disk
     net = cv2.dnn.readNetFromCaffe(args["prototxt"], args["model"])
 
     # if a video path was not supplied, grab a reference to the ip camera
     if not args.get("input", False):
         logger.info("Starting the live stream..")
-        vs = VideoStream(config["url"]).start()
+        vs = VideoStream(config["VideoStream_Url"]).start()
         time.sleep(2.0)
 
     # otherwise, grab a reference to the video file
@@ -121,7 +130,10 @@ def people_counter():
     fps = FPS().start()
 
     if config["Thread"]:
-        vs = thread.ThreadingClass(config["url"])
+        vs = thread.ThreadingClass(config["VideoStream_Url"])
+    if config["Api"]:
+        # set api_time only if API config is true
+        api_time = time.time()
 
     # loop over frames from the video stream
     while True:
@@ -320,6 +332,17 @@ def people_counter():
         # initiate a simple log to save the counting data
         # if config["Log"]:
         #     log_data(move_in, in_time, move_out, out_time)
+
+        # Initiate an API call if set Api_Interval is exceeded
+        if config["Api"]:
+            now = time.time()
+            num_seconds = (now - api_time)
+
+            # if the API interval is exceeded, send an API POST request
+            if num_seconds > config["Api_Interval"]:
+                # post_api(total, move_in, in_time, move_out, out_time)
+                # set api_time to current time to refresh the interval
+                api_time = time.time()
 
         # check to see if we should write the frame to disk
         if writer is not None:
