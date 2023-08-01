@@ -118,12 +118,13 @@ def people_counter():
     totalFrames = 0
     totalDown = 0
     totalUp = 0
+    delta = 0
+    total = 0
     # initialize empty lists to store the counting data
-    total = []
-    move_out = []
-    move_in = []
-    out_time = []
-    in_time = []
+    # move_out = []
+    # move_in = []
+    # out_time = []
+    # in_time = []
 
     # start the frames per second throughput estimator
     fps = FPS().start()
@@ -149,7 +150,7 @@ def people_counter():
         # resize the frame to have a maximum width of 500 pixels (the
         # fewer data we have, the faster we can process it), then convert
         # the frame from BGR to RGB for dlib
-        frame = imutils.resize(frame, width=500)
+        frame = imutils.resize(frame, width=400)
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         # if the frame dimensions are empty, set them
@@ -158,10 +159,10 @@ def people_counter():
 
         # if we are supposed to be writing a video to disk, initialize
         # the writer
-        if args["output"] is not None and writer is None:
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            writer = cv2.VideoWriter(args["output"], fourcc, 30,
-                                     (W, H), True)
+        # if args["output"] is not None and writer is None:
+        #     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        #     writer = cv2.VideoWriter(args["output"], fourcc, 30,
+        #                              (W, H), True)
 
         # initialize the current status along with our list of bounding
         # box rectangles returned by either (1) our object detector or
@@ -188,32 +189,30 @@ def people_counter():
                 # with the prediction
                 confidence = detections[0, 0, i, 2]
 
+                # extract the index of the class label from the
+                # detections list
+                idx = int(detections[0, 0, i, 1])
+
                 # filter out weak detections by requiring a minimum
-                # confidence
-                if confidence > args["confidence"]:
-                    # extract the index of the class label from the
-                    # detections list
-                    idx = int(detections[0, 0, i, 1])
+                # confidence and if the class label is not a person, ignore it
+                if confidence < args["confidence"] and CLASSES[idx] != "person":
+                    continue
 
-                    # if the class label is not a person, ignore it
-                    if CLASSES[idx] != "person":
-                        continue
+                # compute the (x, y)-coordinates of the bounding box for the
+                # object
+                box = detections[0, 0, i, 3:7] * np.array([W, H, W, H])
+                (startX, startY, endX, endY) = box.astype("int")
 
-                    # compute the (x, y)-coordinates of the bounding box
-                    # for the object
-                    box = detections[0, 0, i, 3:7] * np.array([W, H, W, H])
-                    (startX, startY, endX, endY) = box.astype("int")
+                # construct a dlib rectangle object from the bounding
+                # box coordinates and then start the dlib correlation
+                # tracker
+                tracker = dlib.correlation_tracker()
+                rect = dlib.rectangle(startX, startY, endX, endY)
+                tracker.start_track(rgb, rect)
 
-                    # construct a dlib rectangle object from the bounding
-                    # box coordinates and then start the dlib correlation
-                    # tracker
-                    tracker = dlib.correlation_tracker()
-                    rect = dlib.rectangle(startX, startY, endX, endY)
-                    tracker.start_track(rgb, rect)
-
-                    # add the tracker to our list of trackers, so we can
-                    # utilize it during skip frames
-                    trackers.append(tracker)
+                # add the tracker to our list of trackers so we can
+                # utilize it during skip frames
+                trackers.append(tracker)
 
         # otherwise, we should utilize our object *trackers* rather than
         # object *detectors* to obtain a higher frame processing throughput
@@ -240,9 +239,9 @@ def people_counter():
         # draw a horizontal line in the center of the frame -- once an
         # object crosses this line we will determine whether they were
         # moving 'up' or 'down'
-        cv2.line(frame, (0, H // 2), (W, H // 2), (0, 0, 0), 3)
-        cv2.putText(frame, "-Prediction border - Entrance-", (10, H - ((i * 20) + 200)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+        cv2.line(frame, (0, H // 2), (W, H // 2), (0, 0, 0), 1)
+        # cv2.putText(frame, "-Prediction border - Entrance-", (10, H - ((i * 20) + 200)),
+        #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
 
         # use the centroid tracker to associate the (1) old object
         # centroids with (2) the newly computed object centroids
@@ -257,6 +256,7 @@ def people_counter():
             # if there is no existing trackable object, create one
             if to is None:
                 to = TrackableObject(objectID, centroid)
+                to.initialPositionUp = centroid[1] < H // 2
 
             # otherwise, there is a trackable object, so we can utilize it
             # to determine direction
@@ -269,40 +269,35 @@ def people_counter():
                 direction = centroid[1] - np.mean(y)
                 to.centroids.append(centroid)
 
-                # check to see if the object has been counted or not
-                if not to.counted:
-                    # if the direction is negative (indicating the object
-                    # is moving up) AND the centroid is above the center
-                    # line, count the object
-                    if direction < 0 and centroid[1] < H // 2:
-                        totalUp += 1
-                        date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                        move_out.append(totalUp)
-                        out_time.append(date_time)
-                        to.counted = True
+                # if the direction is negative (indicating the object
+                # is moving up) AND the centroid is above the center
+                # line, count the object
+                if direction < 0 and centroid[1] < H // 2 and not to.initialPositionUp:
+                    totalUp += 1
+                    delta -= 1
+                    date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    # move_out.append(totalUp)
+                    # out_time.append(date_time)
+                    print(f"{date_time}: EXIT - dir: {direction}, H: {H}, centroid: {centroid[1]}, "
+                          f"pos: {to.initialPositionUp}")
+                    to.initialPositionUp = not to.initialPositionUp
 
-                    # if the direction is positive (indicating the object
-                    # is moving down) AND the centroid is below the
-                    # center line, count the object
-                    elif direction > 0 and centroid[1] > H // 2:
-                        totalDown += 1
-                        date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
-                        move_in.append(totalDown)
-                        in_time.append(date_time)
-                        # if the people limit exceeds over threshold, send an email alert
-                        if sum(total) >= config["Threshold"]:
-                            cv2.putText(frame, "-ALERT: People limit exceeded-", (10, frame.shape[0] - 80),
-                                        cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 0, 255), 2)
-                            if config["Email"]:
-                                logger.info("Sending email alert..")
-                                email_thread = threading.Thread(target=send_mail)
-                                email_thread.daemon = True
-                                email_thread.start()
-                                logger.info("Alert sent!")
-                        to.counted = True
-                        # compute the sum of total people inside
-                        total = []
-                        total.append(len(move_in) - len(move_out))
+                # if the direction is positive (indicating the object
+                # is moving down) AND the centroid is below the
+                # center line, count the object
+                elif direction > 0 and centroid[1] > H // 2 and to.initialPositionUp:
+                    totalDown += 1
+                    delta += 1
+                    date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    # move_in.append(totalDown)
+                    # in_time.append(date_time)
+                    print(f"{date_time}: ENTER - dir: {direction}, H: {H}, centroid: {centroid[1]}, "
+                          f"pos: {to.initialPositionUp}")
+                    to.initialPositionUp = not to.initialPositionUp
+
+                # compute the sum of total people inside
+                total = totalDown - totalUp
+                # print("Total people inside:", total)
 
             # store the trackable object in our dictionary
             trackableObjects[objectID] = to
@@ -318,11 +313,11 @@ def people_counter():
         info_status = [
             ("Exit", totalUp),
             ("Enter", totalDown),
-            ("Status", status),
+            ("Delta", delta),
         ]
 
         info_total = [
-            ("Total people inside", ', '.join(map(str, total))),
+            ("Total people inside", total),
         ]
 
         # display the output
@@ -335,8 +330,8 @@ def people_counter():
             cv2.putText(frame, text, (265, H - ((i * 20) + 60)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
         # initiate a simple log to save the counting data
-        if config["Log"]:
-            log_data(move_in, in_time, move_out, out_time)
+        # if config["Log"]:
+        #     log_data(move_in, in_time, move_out, out_time)
 
         # Initiate an API call if set Api_Interval is exceeded
         if config["Api"]:
@@ -345,7 +340,7 @@ def people_counter():
 
             # if the API interval is exceeded, send an API POST request
             if num_seconds > config["Api_Interval"]:
-                post_api(total, move_in, in_time, move_out, out_time)
+                # post_api(total, move_in, in_time, move_out, out_time)
                 # set api_time to current time to refresh the interval
                 api_time = time.time()
 
