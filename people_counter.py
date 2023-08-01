@@ -7,7 +7,6 @@ from utils.mailer import Mailer
 from imutils.video import FPS
 from utils import thread
 import numpy as np
-import threading
 import argparse
 import datetime
 import schedule
@@ -67,9 +66,9 @@ def log_data(move_in, in_time, move_out, out_time):
             wr.writerows(export_data)
 
 
-def post_api(move_in, in_time, move_out, out_time):
+def post_api(total, total_down, total_up, delta):
     """ function to post an API call """
-    Api().post(move_in, in_time, move_out, out_time)
+    Api().post(total, total_down, total_up, delta)
 
 
 def people_counter():
@@ -111,13 +110,13 @@ def people_counter():
     # map each unique object ID to a TrackableObject
     ct = CentroidTracker(maxDisappeared=40, maxDistance=50)
     trackers = []
-    trackableObjects = {}
+    trackable_objects = {}
 
     # initialize the total number of frames processed thus far, along
     # with the total number of objects that have moved either up or down
-    totalFrames = 0
-    totalDown = 0
-    totalUp = 0
+    total_frames = 0
+    total_down = 0
+    total_up = 0
     delta = 0
     total = 0
     # initialize empty lists to store the counting data
@@ -150,7 +149,7 @@ def people_counter():
         # resize the frame to have a maximum width of 500 pixels (the
         # fewer data we have, the faster we can process it), then convert
         # the frame from BGR to RGB for dlib
-        frame = imutils.resize(frame, width=400)
+        frame = imutils.resize(frame, width=500)
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
         # if the frame dimensions are empty, set them
@@ -172,7 +171,7 @@ def people_counter():
 
         # check to see if we should run a more computationally expensive
         # object detection method to aid our tracker
-        if totalFrames % args["skip_frames"] == 0:
+        if total_frames % args["skip_frames"] == 0:
             # set the status and initialize our new set of object trackers
             status = "Detecting"
             trackers = []
@@ -201,13 +200,13 @@ def people_counter():
                 # compute the (x, y)-coordinates of the bounding box for the
                 # object
                 box = detections[0, 0, i, 3:7] * np.array([W, H, W, H])
-                (startX, startY, endX, endY) = box.astype("int")
+                (start_x, start_y, end_x, end_y) = box.astype("int")
 
                 # construct a dlib rectangle object from the bounding
                 # box coordinates and then start the dlib correlation
                 # tracker
                 tracker = dlib.correlation_tracker()
-                rect = dlib.rectangle(startX, startY, endX, endY)
+                rect = dlib.rectangle(start_x, start_y, end_x, end_y)
                 tracker.start_track(rgb, rect)
 
                 # add the tracker to our list of trackers so we can
@@ -228,13 +227,13 @@ def people_counter():
                 pos = tracker.get_position()
 
                 # unpack the position object
-                startX = int(pos.left())
-                startY = int(pos.top())
-                endX = int(pos.right())
-                endY = int(pos.bottom())
+                start_x = int(pos.left())
+                start_y = int(pos.top())
+                end_x = int(pos.right())
+                end_y = int(pos.bottom())
 
                 # add the bounding box coordinates to the rectangles list
-                rects.append((startX, startY, endX, endY))
+                rects.append((start_x, start_y, end_x, end_y))
 
         # draw a horizontal line in the center of the frame -- once an
         # object crosses this line we will determine whether they were
@@ -251,7 +250,7 @@ def people_counter():
         for (objectID, centroid) in objects.items():
             # check to see if a trackable object exists for the current
             # object ID
-            to = trackableObjects.get(objectID, None)
+            to = trackable_objects.get(objectID, None)
 
             # if there is no existing trackable object, create one
             if to is None:
@@ -273,34 +272,34 @@ def people_counter():
                 # is moving up) AND the centroid is above the center
                 # line, count the object
                 if direction < 0 and centroid[1] < H // 2 and not to.initialPositionUp:
-                    totalUp += 1
+                    total_up += 1
                     delta -= 1
                     date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    # move_out.append(totalUp)
+                    # move_out.append(total_up)
                     # out_time.append(date_time)
-                    print(f"{date_time}: EXIT - dir: {direction}, H: {H}, centroid: {centroid[1]}, "
-                          f"pos: {to.initialPositionUp}")
+                    print(f"{date_time}: EXIT - count: {total_up}, delta: {delta}, dir: {direction}, H: {H}, "
+                          f"centroid: {centroid[1]}, pos: {to.initialPositionUp}")
                     to.initialPositionUp = not to.initialPositionUp
 
                 # if the direction is positive (indicating the object
                 # is moving down) AND the centroid is below the
                 # center line, count the object
                 elif direction > 0 and centroid[1] > H // 2 and to.initialPositionUp:
-                    totalDown += 1
+                    total_down += 1
                     delta += 1
                     date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    # move_in.append(totalDown)
+                    # move_in.append(total_down)
                     # in_time.append(date_time)
-                    print(f"{date_time}: ENTER - dir: {direction}, H: {H}, centroid: {centroid[1]}, "
-                          f"pos: {to.initialPositionUp}")
+                    print(f"{date_time}: ENTER - count: {total_down}, delta: {delta},  dir: {direction}, H: {H}, "
+                          f"centroid: {centroid[1]}, pos: {to.initialPositionUp}")
                     to.initialPositionUp = not to.initialPositionUp
 
                 # compute the sum of total people inside
-                total = totalDown - totalUp
+                total = total_down - total_up
                 # print("Total people inside:", total)
 
             # store the trackable object in our dictionary
-            trackableObjects[objectID] = to
+            trackable_objects[objectID] = to
 
             # draw both the ID of the object and the centroid of the
             # object on the output frame
@@ -311,8 +310,8 @@ def people_counter():
 
         # construct a tuple of information we will be displaying on the frame
         info_status = [
-            ("Exit", totalUp),
-            ("Enter", totalDown),
+            ("Exit", total_up),
+            ("Enter", total_down),
             ("Delta", delta),
         ]
 
@@ -340,13 +339,15 @@ def people_counter():
 
             # if the API interval is exceeded, send an API POST request
             if num_seconds > config["Api_Interval"]:
-                # post_api(total, move_in, in_time, move_out, out_time)
+                post_api(total, total_down, total_up, delta)
                 # set api_time to current time to refresh the interval
                 api_time = time.time()
+                # reset delta counter
+                delta = 0
 
         # check to see if we should write the frame to disk
-        if writer is not None:
-            writer.write(frame)
+        # if writer is not None:
+        #     writer.write(frame)
 
         # show the output frame
         cv2.imshow("Real-Time Monitoring/Analysis Window", frame)
@@ -356,7 +357,7 @@ def people_counter():
             break
         # increment the total number of frames processed thus far and
         # then update the FPS counter
-        totalFrames += 1
+        total_frames += 1
         fps.update()
 
         # initiate the timer

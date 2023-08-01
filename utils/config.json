@@ -1,7 +1,8 @@
 {
     "Api": false,
     "Api_Url": "",
-    "Api_Interval": "",
+    "Api_Interval": 60,
+    "Device": "Cameraad",
     "Email": false,
     "Email_Send": "",
     "Email_Receive": "",
