@@ -31,9 +31,9 @@ with open("utils/config.json", "r") as file:
 def parse_arguments():
     # function to parse the arguments
     ap = argparse.ArgumentParser()
-    ap.add_argument("-p", "--prototxt", required=False,
+    ap.add_argument("-p", "--prototxt", required=False, default="detector/MobileNetSSD_deploy.prototxt",
                     help="path to Caffe 'deploy' prototxt file")
-    ap.add_argument("-m", "--model", required=True,
+    ap.add_argument("-m", "--model", required=False, default="detector/MobileNetSSD_deploy.caffemodel",
                     help="path to Caffe pre-trained model")
     ap.add_argument("-i", "--input", type=str,
                     help="path to optional input video file")
