@@ -194,7 +194,7 @@ def people_counter():
 
                 # filter out weak detections by requiring a minimum
                 # confidence and if the class label is not a person, ignore it
-                if confidence < args["confidence"] and CLASSES[idx] != "person":
+                if confidence < args["confidence"] or CLASSES[idx] != "person":
                     continue
 
                 # compute the (x, y)-coordinates of the bounding box for the
