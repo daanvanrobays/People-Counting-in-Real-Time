@@ -277,8 +277,8 @@ def people_counter():
                     date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     # move_out.append(total_up)
                     # out_time.append(date_time)
-                    print(f"{date_time}: EXIT - count: {total_up}, delta: {delta}, dir: {direction}, H: {H}, "
-                          f"centroid: {centroid[1]}, pos: {to.initialPositionUp}")
+                    logger.info(f"{date_time}: EXIT - count: {total_up}, delta: {delta}, dir: {direction}, H: {H}, "
+                                f"centroid: {centroid[1]}, pos: {to.initialPositionUp}")
                     to.initialPositionUp = not to.initialPositionUp
 
                 # if the direction is positive (indicating the object
@@ -290,13 +290,13 @@ def people_counter():
                     date_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     # move_in.append(total_down)
                     # in_time.append(date_time)
-                    print(f"{date_time}: ENTER - count: {total_down}, delta: {delta},  dir: {direction}, H: {H}, "
-                          f"centroid: {centroid[1]}, pos: {to.initialPositionUp}")
+                    logger.info(f"{date_time}: ENTER - count: {total_down}, delta: {delta},  dir: {direction}, H: {H}, "
+                                f"centroid: {centroid[1]}, pos: {to.initialPositionUp}")
                     to.initialPositionUp = not to.initialPositionUp
 
                 # compute the sum of total people inside
                 total = total_down - total_up
-                # print("Total people inside:", total)
+                # logger.info("Total people inside:", total)
 
             # store the trackable object in our dictionary
             trackable_objects[objectID] = to
